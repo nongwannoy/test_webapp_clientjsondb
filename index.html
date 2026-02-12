@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการสินค้า</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏪 ระบบจัดการสินค้า</h1>
+            <p class="subtitle">บันทึกและติดตามสินค้าในร้านของคุณ</p>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="tabs">
+            <button class="tab-button active" onclick="showTab('products')">
+                📦 รายการสินค้า
+            </button>
+            <button class="tab-button" onclick="showTab('incoming')">
+                📥 สินค้านำเข้า
+            </button>
+            <button class="tab-button" onclick="showTab('inventory')">
+                📊 สินค้าในคลัง
+            </button>
+        </div>
+
+        <!-- Products Tab -->
+        <div id="products" class="tab-content active">
+            <div class="section-header">
+                <h2>รายการสินค้า</h2>
+                <button class="btn btn-primary" onclick="showAddProductModal()">+ เพิ่มสินค้าใหม่</button>
+            </div>
+            
+            <div class="search-box">
+                <input type="text" id="searchProducts" placeholder="🔍 ค้นหาสินค้า..." onkeyup="searchProducts()">
+            </div>
+
+            <div class="table-container">
+                <table id="productsTable">
+                    <thead>
+                        <tr>
+                            <th>รหัสสินค้า</th>
+                            <th>ชื่อสินค้า</th>
+                            <th>หมวดหมู่</th>
+                            <th>ราคาขาย</th>
+                            <th>จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productsTableBody">
+                        <!-- Data will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Incoming Tab -->
+        <div id="incoming" class="tab-content">
+            <div class="section-header">
+                <h2>สินค้านำเข้า</h2>
+                <button class="btn btn-primary" onclick="showAddIncomingModal()">+ บันทึกการนำเข้า</button>
+            </div>
+
+            <div class="search-box">
+                <input type="text" id="searchIncoming" placeholder="🔍 ค้นหารายการนำเข้า..." onkeyup="searchIncoming()">
+            </div>
+
+            <div class="table-container">
+                <table id="incomingTable">
+                    <thead>
+                        <tr>
+                            <th>วันที่นำเข้า</th>
+                            <th>รหัสสินค้า</th>
+                            <th>ชื่อสินค้า</th>
+                            <th>จำนวน</th>
+                            <th>ราคาต้นทุน/หน่วย</th>
+                            <th>รวม</th>
+                            <th>จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="incomingTableBody">
+                        <!-- Data will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Inventory Tab -->
+        <div id="inventory" class="tab-content">
+            <div class="section-header">
+                <h2>สินค้าในคลัง</h2>
+                <button class="btn btn-secondary" onclick="refreshInventory()">🔄 รีเฟรช</button>
+            </div>
+
+            <div class="search-box">
+                <input type="text" id="searchInventory" placeholder="🔍 ค้นหาสินค้าในคลัง..." onkeyup="searchInventory()">
+            </div>
+
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <h3>รายการสินค้าทั้งหมด</h3>
+                    <p class="stat-number" id="totalProducts">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>มูลค่าสินค้าในคลัง</h3>
+                    <p class="stat-number" id="totalValue">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>สินค้าใกล้หมด</h3>
+                    <p class="stat-number" id="lowStock">0</p>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="inventoryTable">
+                    <thead>
+                        <tr>
+                            <th>รหัสสินค้า</th>
+                            <th>ชื่อสินค้า</th>
+                            <th>คงเหลือ</th>
+                            <th>ราคาต้นทุน</th>
+                            <th>ราคาขาย</th>
+                            <th>มูลค่ารวม</th>
+                            <th>สถานะ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventoryTableBody">
+                        <!-- Data will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Product Modal -->
+    <div id="addProductModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>เพิ่มสินค้าใหม่</h2>
+                <span class="close" onclick="closeModal('addProductModal')">&times;</span>
+            </div>
+            <form id="addProductForm" onsubmit="addProduct(event)">
+                <div class="form-group">
+                    <label>รหัสสินค้า *</label>
+                    <input type="text" id="productCode" required>
+                </div>
+                <div class="form-group">
+                    <label>ชื่อสินค้า *</label>
+                    <input type="text" id="productName" required>
+                </div>
+                <div class="form-group">
+                    <label>หมวดหมู่</label>
+                    <input type="text" id="productCategory">
+                </div>
+                <div class="form-group">
+                    <label>ราคาขาย (บาท) *</label>
+                    <input type="number" id="productPrice" step="0.01" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addProductModal')">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Incoming Modal -->
+    <div id="addIncomingModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>บันทึกการนำเข้าสินค้า</h2>
+                <span class="close" onclick="closeModal('addIncomingModal')">&times;</span>
+            </div>
+            <form id="addIncomingForm" onsubmit="addIncoming(event)">
+                <div class="form-group">
+                    <label>วันที่นำเข้า *</label>
+                    <input type="date" id="incomingDate" required>
+                </div>
+                <div class="form-group">
+                    <label>เลือกสินค้า *</label>
+                    <select id="incomingProduct" required>
+                        <option value="">-- เลือกสินค้า --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>จำนวน *</label>
+                    <input type="number" id="incomingQuantity" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label>ราคาต้นทุน/หน่วย (บาท) *</label>
+                    <input type="number" id="incomingCost" step="0.01" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addIncomingModal')">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
