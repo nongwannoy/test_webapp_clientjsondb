@@ -3,6 +3,46 @@ let products = [];
 let incoming = [];
 let inventory = [];
 
+// URL ของ Apps Script
+const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzWGADAfCY6u0ZyaXGvwToREtEg3qO82ai1-s_4qzIjXoWJYo5Gfs5OqkjibUXhIhX3/exec'; // เปลี่ยนเป็นของคุณ
+
+// โหลดข้อมูลจาก Google Sheets
+async function loadDataFromSheet() {
+    const res = await fetch(SHEET_API_URL);
+    const data = await res.json();
+    products = data.slice(1).map(row => ({
+        code: row[0],
+        name: row[1],
+        category: row[2],
+        price: parseFloat(row[3])
+    }));
+    renderProducts();
+}
+
+// เพิ่มสินค้าใหม่ลง Google Sheets
+async function addProductToSheet(product) {
+    await fetch(SHEET_API_URL, {
+        method: 'POST',
+        body: JSON.stringify(product),
+        headers: { 'Content-Type': 'application/json' }
+    });
+    await loadDataFromSheet();
+}
+
+// ฟอร์มเพิ่มสินค้า
+async function addProduct(event) {
+    event.preventDefault();
+    const code = document.getElementById('productCode').value.trim();
+    const name = document.getElementById('productName').value.trim();
+    const category = document.getElementById('productCategory').value.trim();
+    const price = parseFloat(document.getElementById('productPrice').value);
+
+    const product = { code, name, category, price };
+    await addProductToSheet(product);
+    closeModal('addProductModal');
+    alert('เพิ่มสินค้าเรียบร้อยแล้ว!');
+}
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
     loadData();
@@ -92,92 +132,6 @@ window.onclick = function(event) {
     }
 }
 
-// Add Product
-function addProduct(event) {
-    event.preventDefault();
-    
-    const code = document.getElementById('productCode').value.trim();
-    const name = document.getElementById('productName').value.trim();
-    const category = document.getElementById('productCategory').value.trim();
-    const price = parseFloat(document.getElementById('productPrice').value);
-    
-    // Check if product code already exists
-    if (products.some(p => p.code === code)) {
-        alert('รหัสสินค้านี้มีอยู่แล้ว กรุณาใช้รหัสอื่น');
-        return;
-    }
-    
-    const product = {
-        code: code,
-        name: name,
-        category: category || 'ทั่วไป',
-        price: price
-    };
-    
-    products.push(product);
-    
-    // Initialize inventory for this product
-    inventory.push({
-        code: code,
-        name: name,
-        quantity: 0,
-        costPrice: 0,
-        salePrice: price
-    });
-    
-    saveData();
-    renderProducts();
-    closeModal('addProductModal');
-    
-    alert('เพิ่มสินค้าเรียบร้อยแล้ว!');
-}
-
-// Add Incoming
-function addIncoming(event) {
-    event.preventDefault();
-    
-    const date = document.getElementById('incomingDate').value;
-    const productCode = document.getElementById('incomingProduct').value;
-    const quantity = parseInt(document.getElementById('incomingQuantity').value);
-    const cost = parseFloat(document.getElementById('incomingCost').value);
-    
-    // Find product
-    const product = products.find(p => p.code === productCode);
-    if (!product) {
-        alert('ไม่พบสินค้า');
-        return;
-    }
-    
-    const incomingRecord = {
-        id: Date.now(),
-        date: date,
-        code: productCode,
-        name: product.name,
-        quantity: quantity,
-        cost: cost,
-        total: quantity * cost
-    };
-    
-    incoming.push(incomingRecord);
-    
-    // Update inventory
-    const inventoryItem = inventory.find(i => i.code === productCode);
-    if (inventoryItem) {
-        // Calculate weighted average cost
-        const totalCost = (inventoryItem.quantity * inventoryItem.costPrice) + (quantity * cost);
-        const totalQuantity = inventoryItem.quantity + quantity;
-        
-        inventoryItem.quantity = totalQuantity;
-        inventoryItem.costPrice = totalQuantity > 0 ? totalCost / totalQuantity : 0;
-    }
-    
-    saveData();
-    renderIncoming();
-    closeModal('addIncomingModal');
-    
-    alert('บันทึกการนำเข้าเรียบร้อยแล้ว!');
-}
-
 // Delete Product
 function deleteProduct(code) {
     if (!confirm('คุณแน่ใจหรือไม่ที่จะลบสินค้านี้?')) return;
@@ -240,7 +194,7 @@ function renderProducts() {
             <td>${product.category}</td>
             <td>${formatCurrency(product.price)}</td>
             <td>
-                <button class="btn btn-danger" onclick="deleteProduct('${product.code}')">🗑️ ลบ</button>
+                <!-- ปุ่มลบจะใช้ได้เมื่อมีฟังก์ชันลบใน Apps Script -->
             </td>
         </tr>
     `).join('');
@@ -361,7 +315,7 @@ function searchProducts() {
             <td>${product.category}</td>
             <td>${formatCurrency(product.price)}</td>
             <td>
-                <button class="btn btn-danger" onclick="deleteProduct('${product.code}')">🗑️ ลบ</button>
+                <!-- ปุ่มลบจะใช้ได้เมื่อมีฟังก์ชันลบใน Apps Script -->
             </td>
         </tr>
     `).join('');
@@ -469,3 +423,9 @@ function getStockStatus(quantity) {
         return { text: 'ปกติ', class: 'normal' };
     }
 }
+
+// เริ่มต้นโหลดข้อมูล
+document.addEventListener('DOMContentLoaded', function() {
+    loadDataFromSheet();
+    // renderIncoming(), renderInventory(), updateStats() สำหรับ incoming/inventory
+});
