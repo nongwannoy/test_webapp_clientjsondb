@@ -3,93 +3,101 @@ let products = [];
 let incoming = [];
 let inventory = [];
 
-// URL ของ Apps Script
-const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzWGADAfCY6u0ZyaXGvwToREtEg3qO82ai1-s_4qzIjXoWJYo5Gfs5OqkjibUXhIhX3/exec'; // เปลี่ยนเป็นของคุณ
+// URL ของ Apps Script (เปลี่ยนเป็นของคุณ)
+const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzWGADAfCY6u0ZyaXGvwToREtEg3qO82ai1-s_4qzIjXoWJYo5Gfs5OqkjibUXhIhX3/exec';
 
 // โหลดข้อมูลจาก Google Sheets
-async function loadDataFromSheet() {
-    const res = await fetch(SHEET_API_URL);
+async function loadSheetData(sheetName) {
+    const res = await fetch(`${SHEET_API_URL}?sheet=${sheetName}`);
     const data = await res.json();
-    products = data.slice(1).map(row => ({
+    return data.length > 1 ? data.slice(1) : [];
+}
+
+// โหลดข้อมูลทั้งหมด
+async function loadAllData() {
+    products = (await loadSheetData('products')).map(row => ({
         code: row[0],
         name: row[1],
         category: row[2],
         price: parseFloat(row[3])
     }));
-    renderProducts();
-}
-
-// เพิ่มสินค้าใหม่ลง Google Sheets
-async function addProductToSheet(product) {
-    await fetch(SHEET_API_URL, {
-        method: 'POST',
-        body: JSON.stringify(product),
-        headers: { 'Content-Type': 'application/json' }
-    });
-    await loadDataFromSheet();
-}
-
-// ฟอร์มเพิ่มสินค้า
-async function addProduct(event) {
-    event.preventDefault();
-    const code = document.getElementById('productCode').value.trim();
-    const name = document.getElementById('productName').value.trim();
-    const category = document.getElementById('productCategory').value.trim();
-    const price = parseFloat(document.getElementById('productPrice').value);
-
-    const product = { code, name, category, price };
-    await addProductToSheet(product);
-    closeModal('addProductModal');
-    alert('เพิ่มสินค้าเรียบร้อยแล้ว!');
-}
-
-// Initialize app
-document.addEventListener('DOMContentLoaded', function() {
-    loadData();
+    incoming = (await loadSheetData('incoming')).map(row => ({
+        id: Number(row[0]),
+        date: row[1],
+        code: row[2],
+        name: row[3],
+        quantity: Number(row[4]),
+        cost: parseFloat(row[5]),
+        total: parseFloat(row[6])
+    }));
+    inventory = (await loadSheetData('inventory')).map(row => ({
+        code: row[0],
+        name: row[1],
+        quantity: Number(row[2]),
+        costPrice: parseFloat(row[3]),
+        salePrice: parseFloat(row[4])
+    }));
     renderProducts();
     renderIncoming();
     renderInventory();
     updateStats();
-    
-    // Set today's date as default for incoming
+}
+
+// เพิ่มข้อมูล
+async function addProductToSheet(product) {
+    await fetch(`${SHEET_API_URL}?sheet=products`, {
+        method: 'POST',
+        body: JSON.stringify([product.code, product.name, product.category, product.price]),
+        headers: { 'Content-Type': 'application/json' }
+    });
+    // เพิ่ม inventory ด้วย
+    await fetch(`${SHEET_API_URL}?sheet=inventory`, {
+        method: 'POST',
+        body: JSON.stringify([product.code, product.name, 0, 0, product.price]),
+        headers: { 'Content-Type': 'application/json' }
+    });
+    await loadAllData();
+}
+
+async function addIncomingToSheet(record) {
+    await fetch(`${SHEET_API_URL}?sheet=incoming`, {
+        method: 'POST',
+        body: JSON.stringify([
+            record.id, record.date, record.code, record.name, record.quantity, record.cost, record.total
+        ]),
+        headers: { 'Content-Type': 'application/json' }
+    });
+    // อัปเดต inventory ฝั่ง Google Sheets (ควรมีฟังก์ชันใน Apps Script หรือโหลดมาแล้วคำนวณใหม่)
+    await loadAllData();
+}
+
+// ลบข้อมูล (ต้องเพิ่มฟังก์ชัน doDelete ใน Apps Script)
+async function deleteProductFromSheet(code) {
+    await fetch(`${SHEET_API_URL}?sheet=products&code=${code}`, { method: 'DELETE' });
+    await fetch(`${SHEET_API_URL}?sheet=inventory&code=${code}`, { method: 'DELETE' });
+    await fetch(`${SHEET_API_URL}?sheet=incoming&code=${code}`, { method: 'DELETE' });
+    await loadAllData();
+}
+
+async function deleteIncomingFromSheet(id) {
+    await fetch(`${SHEET_API_URL}?sheet=incoming&id=${id}`, { method: 'DELETE' });
+    await loadAllData();
+}
+
+// DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function() {
+    loadAllData();
     document.getElementById('incomingDate').valueAsDate = new Date();
 });
 
-// Load data from localStorage
-function loadData() {
-    const savedProducts = localStorage.getItem('products');
-    const savedIncoming = localStorage.getItem('incoming');
-    const savedInventory = localStorage.getItem('inventory');
-    
-    if (savedProducts) products = JSON.parse(savedProducts);
-    if (savedIncoming) incoming = JSON.parse(savedIncoming);
-    if (savedInventory) inventory = JSON.parse(savedInventory);
-}
-
-// Save data to localStorage
-function saveData() {
-    localStorage.setItem('products', JSON.stringify(products));
-    localStorage.setItem('incoming', JSON.stringify(incoming));
-    localStorage.setItem('inventory', JSON.stringify(inventory));
-}
-
 // Tab Navigation
 function showTab(tabName) {
-    // Hide all tabs
     const tabs = document.querySelectorAll('.tab-content');
     tabs.forEach(tab => tab.classList.remove('active'));
-    
-    // Remove active class from all buttons
     const buttons = document.querySelectorAll('.tab-button');
     buttons.forEach(button => button.classList.remove('active'));
-    
-    // Show selected tab
     document.getElementById(tabName).classList.add('active');
-    
-    // Add active class to clicked button
     event.target.classList.add('active');
-    
-    // Refresh data based on tab
     if (tabName === 'products') renderProducts();
     if (tabName === 'incoming') renderIncoming();
     if (tabName === 'inventory') {
@@ -105,17 +113,14 @@ function showAddProductModal() {
 }
 
 function showAddIncomingModal() {
-    // Populate product dropdown
     const select = document.getElementById('incomingProduct');
     select.innerHTML = '<option value="">-- เลือกสินค้า --</option>';
-    
     products.forEach(product => {
         const option = document.createElement('option');
         option.value = product.code;
         option.textContent = `${product.code} - ${product.name}`;
         select.appendChild(option);
     });
-    
     document.getElementById('addIncomingModal').style.display = 'block';
     document.getElementById('addIncomingForm').reset();
     document.getElementById('incomingDate').valueAsDate = new Date();
@@ -125,56 +130,72 @@ function closeModal(modalId) {
     document.getElementById(modalId).style.display = 'none';
 }
 
-// Close modal when clicking outside
 window.onclick = function(event) {
     if (event.target.classList.contains('modal')) {
         event.target.style.display = 'none';
     }
 }
 
+// Add Product
+async function addProduct(event) {
+    event.preventDefault();
+    const code = document.getElementById('productCode').value.trim();
+    const name = document.getElementById('productName').value.trim();
+    const category = document.getElementById('productCategory').value.trim();
+    const price = parseFloat(document.getElementById('productPrice').value);
+    if (products.some(p => p.code === code)) {
+        alert('รหัสสินค้านี้มีอยู่แล้ว กรุณาใช้รหัสอื่น');
+        return;
+    }
+    const product = { code, name, category: category || 'ทั่วไป', price };
+    await addProductToSheet(product);
+    closeModal('addProductModal');
+    alert('เพิ่มสินค้าเรียบร้อยแล้ว!');
+}
+
+// Add Incoming
+async function addIncoming(event) {
+    event.preventDefault();
+    const date = document.getElementById('incomingDate').value;
+    const productCode = document.getElementById('incomingProduct').value;
+    const quantity = parseInt(document.getElementById('incomingQuantity').value);
+    const cost = parseFloat(document.getElementById('incomingCost').value);
+    const product = products.find(p => p.code === productCode);
+    if (!product) {
+        alert('ไม่พบสินค้า');
+        return;
+    }
+    const incomingRecord = {
+        id: Date.now(),
+        date,
+        code: productCode,
+        name: product.name,
+        quantity,
+        cost,
+        total: quantity * cost
+    };
+    await addIncomingToSheet(incomingRecord);
+    closeModal('addIncomingModal');
+    alert('บันทึกการนำเข้าเรียบร้อยแล้ว!');
+}
+
 // Delete Product
-function deleteProduct(code) {
+async function deleteProduct(code) {
     if (!confirm('คุณแน่ใจหรือไม่ที่จะลบสินค้านี้?')) return;
-    
-    products = products.filter(p => p.code !== code);
-    inventory = inventory.filter(i => i.code !== code);
-    incoming = incoming.filter(i => i.code !== code);
-    
-    saveData();
-    renderProducts();
-    renderInventory();
-    renderIncoming();
-    
+    await deleteProductFromSheet(code);
     alert('ลบสินค้าเรียบร้อยแล้ว!');
 }
 
 // Delete Incoming
-function deleteIncoming(id) {
+async function deleteIncoming(id) {
     if (!confirm('คุณแน่ใจหรือไม่ที่จะลบรายการนี้?')) return;
-    
-    const record = incoming.find(i => i.id === id);
-    if (!record) return;
-    
-    // Update inventory
-    const inventoryItem = inventory.find(i => i.code === record.code);
-    if (inventoryItem) {
-        inventoryItem.quantity -= record.quantity;
-        if (inventoryItem.quantity < 0) inventoryItem.quantity = 0;
-    }
-    
-    incoming = incoming.filter(i => i.id !== id);
-    
-    saveData();
-    renderIncoming();
-    renderInventory();
-    
+    await deleteIncomingFromSheet(id);
     alert('ลบรายการเรียบร้อยแล้ว!');
 }
 
 // Render Products Table
 function renderProducts() {
     const tbody = document.getElementById('productsTableBody');
-    
     if (products.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -186,7 +207,6 @@ function renderProducts() {
         `;
         return;
     }
-    
     tbody.innerHTML = products.map(product => `
         <tr>
             <td>${product.code}</td>
@@ -194,7 +214,7 @@ function renderProducts() {
             <td>${product.category}</td>
             <td>${formatCurrency(product.price)}</td>
             <td>
-                <!-- ปุ่มลบจะใช้ได้เมื่อมีฟังก์ชันลบใน Apps Script -->
+                <button class="btn btn-danger" onclick="deleteProduct('${product.code}')">🗑️ ลบ</button>
             </td>
         </tr>
     `).join('');
@@ -203,7 +223,6 @@ function renderProducts() {
 // Render Incoming Table
 function renderIncoming() {
     const tbody = document.getElementById('incomingTableBody');
-    
     if (incoming.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -215,10 +234,7 @@ function renderIncoming() {
         `;
         return;
     }
-    
-    // Sort by date descending
     const sortedIncoming = [...incoming].sort((a, b) => new Date(b.date) - new Date(a.date));
-    
     tbody.innerHTML = sortedIncoming.map(record => `
         <tr>
             <td>${formatDate(record.date)}</td>
@@ -237,7 +253,6 @@ function renderIncoming() {
 // Render Inventory Table
 function renderInventory() {
     const tbody = document.getElementById('inventoryTableBody');
-    
     if (inventory.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -249,11 +264,9 @@ function renderInventory() {
         `;
         return;
     }
-    
     tbody.innerHTML = inventory.map(item => {
         const totalValue = item.quantity * item.costPrice;
         const status = getStockStatus(item.quantity);
-        
         return `
             <tr>
                 <td>${item.code}</td>
@@ -273,7 +286,6 @@ function updateStats() {
     const totalProducts = inventory.length;
     const totalValue = inventory.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
     const lowStock = inventory.filter(item => item.quantity < 10 && item.quantity > 0).length;
-    
     document.getElementById('totalProducts').textContent = totalProducts;
     document.getElementById('totalValue').textContent = formatCurrency(totalValue);
     document.getElementById('lowStock').textContent = lowStock;
@@ -290,13 +302,11 @@ function refreshInventory() {
 function searchProducts() {
     const searchTerm = document.getElementById('searchProducts').value.toLowerCase();
     const tbody = document.getElementById('productsTableBody');
-    
     const filtered = products.filter(p => 
         p.code.toLowerCase().includes(searchTerm) ||
         p.name.toLowerCase().includes(searchTerm) ||
         p.category.toLowerCase().includes(searchTerm)
     );
-    
     if (filtered.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -307,7 +317,6 @@ function searchProducts() {
         `;
         return;
     }
-    
     tbody.innerHTML = filtered.map(product => `
         <tr>
             <td>${product.code}</td>
@@ -315,7 +324,7 @@ function searchProducts() {
             <td>${product.category}</td>
             <td>${formatCurrency(product.price)}</td>
             <td>
-                <!-- ปุ่มลบจะใช้ได้เมื่อมีฟังก์ชันลบใน Apps Script -->
+                <button class="btn btn-danger" onclick="deleteProduct('${product.code}')">🗑️ ลบ</button>
             </td>
         </tr>
     `).join('');
@@ -324,13 +333,11 @@ function searchProducts() {
 function searchIncoming() {
     const searchTerm = document.getElementById('searchIncoming').value.toLowerCase();
     const tbody = document.getElementById('incomingTableBody');
-    
     const filtered = incoming.filter(i => 
         i.code.toLowerCase().includes(searchTerm) ||
         i.name.toLowerCase().includes(searchTerm) ||
         i.date.includes(searchTerm)
     );
-    
     if (filtered.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -341,9 +348,7 @@ function searchIncoming() {
         `;
         return;
     }
-    
     const sortedFiltered = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
-    
     tbody.innerHTML = sortedFiltered.map(record => `
         <tr>
             <td>${formatDate(record.date)}</td>
@@ -362,12 +367,10 @@ function searchIncoming() {
 function searchInventory() {
     const searchTerm = document.getElementById('searchInventory').value.toLowerCase();
     const tbody = document.getElementById('inventoryTableBody');
-    
     const filtered = inventory.filter(i => 
         i.code.toLowerCase().includes(searchTerm) ||
         i.name.toLowerCase().includes(searchTerm)
     );
-    
     if (filtered.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -378,11 +381,9 @@ function searchInventory() {
         `;
         return;
     }
-    
     tbody.innerHTML = filtered.map(item => {
         const totalValue = item.quantity * item.costPrice;
         const status = getStockStatus(item.quantity);
-        
         return `
             <tr>
                 <td>${item.code}</td>
@@ -423,9 +424,3 @@ function getStockStatus(quantity) {
         return { text: 'ปกติ', class: 'normal' };
     }
 }
-
-// เริ่มต้นโหลดข้อมูล
-document.addEventListener('DOMContentLoaded', function() {
-    loadDataFromSheet();
-    // renderIncoming(), renderInventory(), updateStats() สำหรับ incoming/inventory
-});
