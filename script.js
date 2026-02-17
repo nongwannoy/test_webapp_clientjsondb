@@ -1,94 +1,49 @@
+// Firebase SDK (ต้องเพิ่ม <script> firebasejs ใน index.html ด้วย)
+const firebaseConfig = {
+  apiKey: "AIzaSyBwD_p0kYhQflyNP0s_Ujp2i_8WEF0eEME",
+  authDomain: "sample-firebase-ai-app-1de37.firebaseapp.com",
+  projectId: "sample-firebase-ai-app-1de37",
+  storageBucket: "sample-firebase-ai-app-1de37.firebasestorage.app",
+  messagingSenderId: "750968294743",
+  appId: "1:750968294743:web:a2e78b7420c6cb0b36c212"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
 // Data Storage
 let products = [];
 let incoming = [];
 let inventory = [];
 
-// URL ของ Apps Script (เปลี่ยนเป็นของคุณ)
-const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzWGADAfCY6u0ZyaXGvwToREtEg3qO82ai1-s_4qzIjXoWJYo5Gfs5OqkjibUXhIhX3/exec';
-
-// โหลดข้อมูลจาก Google Sheets
-async function loadSheetData(sheetName) {
-    const res = await fetch(`${SHEET_API_URL}?sheet=${sheetName}`);
-    const data = await res.json();
-    return data.length > 1 ? data.slice(1) : [];
-}
-
-// โหลดข้อมูลทั้งหมด
-async function loadAllData() {
-    products = (await loadSheetData('products')).map(row => ({
-        code: row[0],
-        name: row[1],
-        category: row[2],
-        price: parseFloat(row[3])
-    }));
-    incoming = (await loadSheetData('incoming')).map(row => ({
-        id: Number(row[0]),
-        date: row[1],
-        code: row[2],
-        name: row[3],
-        quantity: Number(row[4]),
-        cost: parseFloat(row[5]),
-        total: parseFloat(row[6])
-    }));
-    inventory = (await loadSheetData('inventory')).map(row => ({
-        code: row[0],
-        name: row[1],
-        quantity: Number(row[2]),
-        costPrice: parseFloat(row[3]),
-        salePrice: parseFloat(row[4])
-    }));
+// Initialize app
+document.addEventListener('DOMContentLoaded', async function() {
+    await loadData();
     renderProducts();
     renderIncoming();
     renderInventory();
     updateStats();
-}
-
-// เพิ่มข้อมูล
-async function addProductToSheet(product) {
-    await fetch(`${SHEET_API_URL}?sheet=products`, {
-        method: 'POST',
-        body: JSON.stringify([product.code, product.name, product.category, product.price]),
-        headers: { 'Content-Type': 'application/json' }
-    });
-    // เพิ่ม inventory ด้วย
-    await fetch(`${SHEET_API_URL}?sheet=inventory`, {
-        method: 'POST',
-        body: JSON.stringify([product.code, product.name, 0, 0, product.price]),
-        headers: { 'Content-Type': 'application/json' }
-    });
-    await loadAllData();
-}
-
-async function addIncomingToSheet(record) {
-    await fetch(`${SHEET_API_URL}?sheet=incoming`, {
-        method: 'POST',
-        body: JSON.stringify([
-            record.id, record.date, record.code, record.name, record.quantity, record.cost, record.total
-        ]),
-        headers: { 'Content-Type': 'application/json' }
-    });
-    // อัปเดต inventory ฝั่ง Google Sheets (ควรมีฟังก์ชันใน Apps Script หรือโหลดมาแล้วคำนวณใหม่)
-    await loadAllData();
-}
-
-// ลบข้อมูล (ต้องเพิ่มฟังก์ชัน doDelete ใน Apps Script)
-async function deleteProductFromSheet(code) {
-    await fetch(`${SHEET_API_URL}?sheet=products&code=${code}`, { method: 'DELETE' });
-    await fetch(`${SHEET_API_URL}?sheet=inventory&code=${code}`, { method: 'DELETE' });
-    await fetch(`${SHEET_API_URL}?sheet=incoming&code=${code}`, { method: 'DELETE' });
-    await loadAllData();
-}
-
-async function deleteIncomingFromSheet(id) {
-    await fetch(`${SHEET_API_URL}?sheet=incoming&id=${id}`, { method: 'DELETE' });
-    await loadAllData();
-}
-
-// DOMContentLoaded
-document.addEventListener('DOMContentLoaded', function() {
-    loadAllData();
     document.getElementById('incomingDate').valueAsDate = new Date();
 });
+
+// Load data from Firestore
+async function loadData() {
+    products = [];
+    incoming = [];
+    inventory = [];
+
+    // Products
+    const productsSnap = await db.collection('products').get();
+    productsSnap.forEach(doc => products.push({ id: doc.id, ...doc.data() }));
+
+    // Incoming
+    const incomingSnap = await db.collection('incoming').get();
+    incomingSnap.forEach(doc => incoming.push({ id: doc.id, ...doc.data() }));
+
+    // Inventory
+    const inventorySnap = await db.collection('inventory').get();
+    inventorySnap.forEach(doc => inventory.push({ id: doc.id, ...doc.data() }));
+}
 
 // Tab Navigation
 function showTab(tabName) {
@@ -143,12 +98,20 @@ async function addProduct(event) {
     const name = document.getElementById('productName').value.trim();
     const category = document.getElementById('productCategory').value.trim();
     const price = parseFloat(document.getElementById('productPrice').value);
-    if (products.some(p => p.code === code)) {
+
+    // Check duplicate
+    const exist = await db.collection('products').where('code', '==', code).get();
+    if (!exist.empty) {
         alert('รหัสสินค้านี้มีอยู่แล้ว กรุณาใช้รหัสอื่น');
         return;
     }
-    const product = { code, name, category: category || 'ทั่วไป', price };
-    await addProductToSheet(product);
+
+    await db.collection('products').add({ code, name, category: category || 'ทั่วไป', price });
+    await db.collection('inventory').add({ code, name, quantity: 0, costPrice: 0, salePrice: price });
+
+    await loadData();
+    renderProducts();
+    renderInventory();
     closeModal('addProductModal');
     alert('เพิ่มสินค้าเรียบร้อยแล้ว!');
 }
@@ -160,13 +123,16 @@ async function addIncoming(event) {
     const productCode = document.getElementById('incomingProduct').value;
     const quantity = parseInt(document.getElementById('incomingQuantity').value);
     const cost = parseFloat(document.getElementById('incomingCost').value);
-    const product = products.find(p => p.code === productCode);
-    if (!product) {
+
+    // Find product
+    const productSnap = await db.collection('products').where('code', '==', productCode).get();
+    if (productSnap.empty) {
         alert('ไม่พบสินค้า');
         return;
     }
+    const product = productSnap.docs[0].data();
+
     const incomingRecord = {
-        id: Date.now(),
         date,
         code: productCode,
         name: product.name,
@@ -174,7 +140,25 @@ async function addIncoming(event) {
         cost,
         total: quantity * cost
     };
-    await addIncomingToSheet(incomingRecord);
+
+    await db.collection('incoming').add(incomingRecord);
+
+    // Update inventory
+    const inventorySnap = await db.collection('inventory').where('code', '==', productCode).get();
+    if (!inventorySnap.empty) {
+        const doc = inventorySnap.docs[0];
+        const inventoryItem = doc.data();
+        const totalCost = (inventoryItem.quantity * inventoryItem.costPrice) + (quantity * cost);
+        const totalQuantity = inventoryItem.quantity + quantity;
+        await db.collection('inventory').doc(doc.id).update({
+            quantity: totalQuantity,
+            costPrice: totalQuantity > 0 ? totalCost / totalQuantity : 0
+        });
+    }
+
+    await loadData();
+    renderIncoming();
+    renderInventory();
     closeModal('addIncomingModal');
     alert('บันทึกการนำเข้าเรียบร้อยแล้ว!');
 }
@@ -182,14 +166,50 @@ async function addIncoming(event) {
 // Delete Product
 async function deleteProduct(code) {
     if (!confirm('คุณแน่ใจหรือไม่ที่จะลบสินค้านี้?')) return;
-    await deleteProductFromSheet(code);
+
+    // ลบ products
+    const productsSnap = await db.collection('products').where('code', '==', code).get();
+    productsSnap.forEach(doc => doc.ref.delete());
+
+    // ลบ inventory
+    const inventorySnap = await db.collection('inventory').where('code', '==', code).get();
+    inventorySnap.forEach(doc => doc.ref.delete());
+
+    // ลบ incoming
+    const incomingSnap = await db.collection('incoming').where('code', '==', code).get();
+    incomingSnap.forEach(doc => doc.ref.delete());
+
+    await loadData();
+    renderProducts();
+    renderInventory();
+    renderIncoming();
     alert('ลบสินค้าเรียบร้อยแล้ว!');
 }
 
 // Delete Incoming
 async function deleteIncoming(id) {
     if (!confirm('คุณแน่ใจหรือไม่ที่จะลบรายการนี้?')) return;
-    await deleteIncomingFromSheet(id);
+
+    // หา record
+    const doc = await db.collection('incoming').doc(id).get();
+    if (!doc.exists) return;
+    const record = doc.data();
+
+    // อัปเดต inventory
+    const inventorySnap = await db.collection('inventory').where('code', '==', record.code).get();
+    if (!inventorySnap.empty) {
+        const invDoc = inventorySnap.docs[0];
+        const inventoryItem = invDoc.data();
+        let newQty = inventoryItem.quantity - record.quantity;
+        if (newQty < 0) newQty = 0;
+        await db.collection('inventory').doc(invDoc.id).update({ quantity: newQty });
+    }
+
+    await db.collection('incoming').doc(id).delete();
+
+    await loadData();
+    renderIncoming();
+    renderInventory();
     alert('ลบรายการเรียบร้อยแล้ว!');
 }
 
@@ -244,7 +264,7 @@ function renderIncoming() {
             <td>${formatCurrency(record.cost)}</td>
             <td>${formatCurrency(record.total)}</td>
             <td>
-                <button class="btn btn-danger" onclick="deleteIncoming(${record.id})">🗑️ ลบ</button>
+                <button class="btn btn-danger" onclick="deleteIncoming('${record.id}')">🗑️ ลบ</button>
             </td>
         </tr>
     `).join('');
@@ -358,7 +378,7 @@ function searchIncoming() {
             <td>${formatCurrency(record.cost)}</td>
             <td>${formatCurrency(record.total)}</td>
             <td>
-                <button class="btn btn-danger" onclick="deleteIncoming(${record.id})">🗑️ ลบ</button>
+                <button class="btn btn-danger" onclick="deleteIncoming('${record.id}')">🗑️ ลบ</button>
             </td>
         </tr>
     `).join('');
